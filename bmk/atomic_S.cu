@@ -1,4 +1,10 @@
 
+/*
+ * Benchmark used to generate the service times
+ * All atomics are to the same address
+ */
+
+
 #include <cuda_runtime.h>
 #include <assert.h>
 #include <stdlib.h>

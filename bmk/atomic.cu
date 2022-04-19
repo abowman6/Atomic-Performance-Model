@@ -1,4 +1,10 @@
 
+/*
+ * Benchmark for same address atomic operations
+ * Does not report anything on its own, use Nsight Compute to gather statistics
+ * In particular gpu__cycles_elapsed reports the total run time in cycles
+ */
+
 #include <cuda_runtime.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -10,7 +16,6 @@ __global__ void atomic_bmk(int *arr, int *addr, int limit, int iters, long *time
   unsigned tid = threadIdx.x + blockIdx.x * blockDim.x ;
   unsigned nthreads = gridDim.x * blockDim.x;
   int prev = 1;
-  long t1, t2;
 
   for(int i = tid; i < limit; i += nthreads) {
     for (int j = 0; j < iters; ++j) {

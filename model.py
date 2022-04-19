@@ -3,11 +3,11 @@ import re
 import os
 import csv
 from io import StringIO
-import matplotlib.pyplot as plt
+import argparse
 
 NCU = "/usr/local/cuda/bin/ncu"
 
-wd = "/home/abowman6/bfs/ggc/gen-unoptimized/bfs-wl"
+wd = "/home/abowman6/bfs/ggc/gen-best/bfs-wl"
 binary = "test"
 
 events = ["gpu__cycles_elapsed.sum","sm__warps_launched.sum"]
@@ -16,9 +16,9 @@ metrics += ["l1tex__t_sectors_pipe_lsu_mem_global_op_red.sum,l1tex__t_set_access
 
 max_service_time = 0
 
-def run(binary, bin_args, profiler="ncu", use_file=False, random=False):
+def run(cmd, profiler="ncu", use_file=False, random=False):
   args = f"--print-kernel-base mangled --csv --metrics {','.join(metrics+events)} "
-  args += binary + " " + bin_args
+  args += cmd 
   if not use_file:
     args = args.split()
     output = subprocess.run([profiler]+args, capture_output=True)
@@ -29,7 +29,6 @@ def run(binary, bin_args, profiler="ncu", use_file=False, random=False):
       output = f.readlines()
     os.system("rm -f __prof_tmp")
 
-  #print(output)
   count = 0
   while len(output[count]) < 2 or output[count][:4] != "\"ID\"":
     count+=1
@@ -45,8 +44,9 @@ def run(binary, bin_args, profiler="ncu", use_file=False, random=False):
 
   kernel_name = None
 
-  name_map = {}
+  name_map = []
   service_times = {}
+  count_map = {}
 
   if random:
     random_scale = 64
@@ -61,8 +61,8 @@ def run(binary, bin_args, profiler="ncu", use_file=False, random=False):
 
   for row in reader:
     name = row['Kernel Name']
-    if not name in name_map.keys():
-      name_map[name] = []
+    if not name in count_map.keys():
+      count_map[name] = 0
     if row['Metric Name'] == 'gpu__cycles_elapsed.sum':
       gpu_cycles += int(row['Metric Value'].replace(",",""))
     if row['Metric Name'] == 'l1tex__t_sectors_pipe_lsu_mem_global_op_atom.sum':
@@ -76,30 +76,31 @@ def run(binary, bin_args, profiler="ncu", use_file=False, random=False):
     if row['Metric Name'] == 'sm__warps_launched.sum':
       warps += int(row['Metric Value'].replace(",",""))
 
-    #print(requests,transactions,gpu_cycles,warps) 
-    
     if transactions*requests*gpu_cycles*warps != 0:
       n = str(int(transactions/requests*warps/random_scale))
       if int(n) < int(max_service_time):
         tup = eval(service_times[n])[0]
       else:
-        tup = 1 
-      tup *= transactions/random_scale
-      #print(tup)
-      tup = (gpu_cycles, tup, tup/gpu_cycles)
-      name_map[name].append(tup)
+        tup = 1
+      total_time = tup*transactions/random_scale
+      tup = f"{name}, {count_map[name]}, {gpu_cycles}, {total_time}, %0.2f, {n}, {tup}, {transactions}"%(total_time/gpu_cycles*100)
+      name_map.append(tup)
       transactions = 0 
       requests = 0 
       gpu_cycles = 0
       warps = 0 
+      count_map[name] += 1
 
   return name_map
 
+head = "Name, Invocation, Total Cycles, Predicted time on atomics, % on atomics, atomics in flight, service time, transactions"
+
 if __name__ == "__main__":
-  #print(run("bmk/atomic_S", "1 32 1"))
-  output = run(wd+"/"+binary,"~/bfs/inputs/random/r4-2e23.gr", use_file=True, profiler=NCU)
-  #output = run("bmk/atomic_random", "640 256 1", random=True)
-  #output = run("bmk/atomic_bmk", "640 256 1", random=False)
-  #output = run("/home/abowman6/d/CBET_RayTracing_3D/cbet-gpu", "28", profiler=NCU)
-  print(output)
+  p = argparse.ArgumentParser("python3 model.py")
+  p.add_argument("cmd", help="GPU program to run with arguments", nargs="+")
+  p.add_argument("--use_file", dest="file", help="CUDA runs into issues with being used in a subprocess, if this is an issue set this argument to True")
+  p.add_argument("--random", dest="random", help="Use random address model instead of single address model")
+  args = p.parse_args()
+  output = run(" ".join(args.cmd), profiler=NCU, random=args.random, use_file=args.file)
+  print("\n".join(output))
 

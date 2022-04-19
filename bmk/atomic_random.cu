@@ -1,4 +1,10 @@
 
+/*
+ * Generates atomics to random addresses
+ * Run using NSight Compute to gather statistics
+ * In particular gpu__cycles_elapsed reports the total run time in cycles
+ */
+
 #include <cuda_runtime.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -10,15 +16,10 @@ __global__ void atomic_bmk(int *arr, long *addr, int limit, int iters, long *tim
   unsigned tid = threadIdx.x + blockIdx.x * blockDim.x ;
   unsigned nthreads = gridDim.x * blockDim.x;
   int prev = 1;
-  long t1;
-  long t2;
 
   for(int i = tid; i < limit; i += nthreads) {
     for (int j = 0; j < iters; ++j) {
-      //t1 = clock64();
       prev = atomicAdd(arr+addr[tid], prev);
-      //t2 = clock64();
-      //time[tid*iters+j] = t2-t1;
     }
   }
 }
